@@ -63,42 +63,47 @@ def get_HEO_slab(metals, miller_index, min_slab_size, min_vacuum_size,
     # get supercell of slab
     slabgen = SlabGenerator(HeO2, miller_index, min_slab_size, min_vacuum_size, lll_reduce=lll_reduce, 
                             max_normal_search=max_normal_search, center_slab=True, primitive=True)    
-    slab = slabgen.get_slabs()[0]
-    repeat = get_repeat_from_min_lw(slab, 8)
-    slab.make_supercell(repeat)
+    slabs = slabgen.get_slabs()
     
-    # get the bond length between M-M
-    Hesite = [site for site in slab if site.species_string == 'He'][0]
-    iHesite = slab.index(Hesite)
-    min_blength = min([slab.get_distance(nn.index, iHesite) for nn in 
-                       slab.get_neighbors(Hesite, 5, include_index=True) if nn.species_string != 'O'])*1.1
-    
-    # get the metallic coordination number
-    m_nn = len([nn for nn in slab.get_neighbors(Hesite, min_blength, include_index=True) 
-                if nn.species_string != 'O'])
-    
-    # make a list of all metals we want in the slab so we can keep track of which ones have already
-    # been placed. This way we make sure all metals are as equally distributed as possible in the slab
-    n = math.ceil(48/5)
-    total_metals = []
-    for m in metals:
-        total_metals.extend([m]*n)
-        
-    # start replacing He atoms with metals, the algorithm will check if any neighboring metals exist for 
-    # current site and if it does, choose a different metal. This ensures maximum entropy by making an ensemble
-    # as randomized and unordered as possible that this type of arrangement will have the largest ensemble
-    HEO = slab.copy()
-    for i, site in enumerate(HEO):
-        if site.species_string == 'He':
-            m = random.sample(total_metals, 1)[0]
-            neighbor_metals = [nn.species_string for nn in 
-                               HEO.get_neighbors(site, min_blength, include_index=True) if nn.species_string != 'O']
+    HEO_list = []
+    for slab in slabs:
+        repeat = get_repeat_from_min_lw(slab, 8)
+        slab.make_supercell(repeat)
 
-            while m in neighbor_metals:
+        # get the bond length between M-M
+        Hesite = [site for site in slab if site.species_string == 'He'][0]
+        iHesite = slab.index(Hesite)
+        min_blength = min([slab.get_distance(nn.index, iHesite) for nn in 
+                           slab.get_neighbors(Hesite, 5, include_index=True) if nn.species_string != 'O'])*1.1
+
+        # get the metallic coordination number
+        m_nn = len([nn for nn in slab.get_neighbors(Hesite, min_blength, include_index=True) 
+                    if nn.species_string != 'O'])
+
+        # make a list of all metals we want in the slab so we can keep track of which ones have already
+        # been placed. This way we make sure all metals are as equally distributed as possible in the slab
+        n = math.ceil(48/5)
+        total_metals = []
+        for m in metals:
+            total_metals.extend([m]*n)
+
+        # start replacing He atoms with metals, the algorithm will check if any neighboring metals exist for 
+        # current site and if it does, choose a different metal. This ensures maximum entropy by making an ensemble
+        # as randomized and unordered as possible that this type of arrangement will have the largest ensemble
+        HEO = slab.copy()
+        for i, site in enumerate(HEO):
+            if site.species_string == 'He':
                 m = random.sample(total_metals, 1)[0]
-                if len(total_metals) < m_nn+(n*len(metals)-slab.composition.as_dict()['He']):
-                    break
-            HEO.replace(i, m)
-            del total_metals[total_metals.index(m)]
+                neighbor_metals = [nn.species_string for nn in 
+                                   HEO.get_neighbors(site, min_blength, include_index=True) if nn.species_string != 'O']
 
-    return HEO
+                while m in neighbor_metals:
+                    m = random.sample(total_metals, 1)[0]
+                    if len(total_metals) < m_nn+(n*len(metals)-slab.composition.as_dict()['He']):
+                        break
+                HEO.replace(i, m, properties={'bulk_wyckoff': site.bulk_wyckoff, 
+                                              'bulk_equivalent': site.bulk_equivalent})
+                del total_metals[total_metals.index(m)]
+        HEO_list.append(HEO)
+
+    return HEO_list
